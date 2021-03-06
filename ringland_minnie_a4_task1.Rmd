@@ -1,0 +1,96 @@
+---
+title: "Hierarchical Clustering of Stream Chemistry Data in Santa Barbara"
+subtitle: "ESM 244 - Assignment 4 Task 1"
+author: "Minnie Ringland"
+date: "March 8, 2021"
+output:
+  html_document:
+    theme: paper
+    code_folding: hide
+    highlight: zenburn
+    toc: true
+    toc_float: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse) #for everything
+library(here) # for file reference
+
+# Packages for cluster analysis:
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+
+```
+
+## About the Data
+
+Today, we'll be using stream water chemistry data collected by Professor John Melack's team with the SBC LTER. Stream water samples have been collected throughout Santa Barbara area watersheds, and throughout each year since 2000. Measurements include dissolved nitrogen (nitrate, ammonium, total dissolved nitrogen); soluble reactive phosphorus (SRP); particulate organic carbon, nitrogen and phosphorus; total suspended sediments; and conductivity.
+
+We'll cluster observations by site, and then investigate linkages between sites based on these different biochemical parameters.
+
+
+```{r}
+# Read in data
+stream_chem <- read_csv("sbc_lter_registered_stream_chemistry.csv") %>% 
+  na_if(.,-999) # Replace "-999" with NA
+```
+
+#### Cluster by site
+
+```{r}
+# Condense to find mean values for each site
+stream_means <- stream_chem %>% 
+  group_by(site_code) %>% 
+  summarize(across(nh4_uM:spec_cond_uSpercm, mean, na.rm = TRUE))
+
+# Scale values??
+stream_scaled <- stream_means %>% 
+  select(nh4_uM:spec_cond_uSpercm) %>% 
+  scale()
+
+# Add back rownames (site_code) from stream_means
+rownames(stream_scaled) <- stream_means$site_code
+
+```
+
+#### Find Euclidean distances using `stats::dist()`
+
+```{r}
+# Compute dissimilarity values (Euclidean distances):
+euc_distance <- dist(stream_scaled, method = "euclidean")
+
+```
+
+#### Perform hierarchical clustering by complete linkage with `stats::hclust()`
+
+The `stats::hclust()` function performs hierarchical clustering, on a given dissimilarity matrix (our matrix of euclidean distances), using the linkage we specify. 
+
+Here, we'll use complete linkage - which means that clusters are merged by the smallest *maximum* distance between two observations in distinct clusters.
+
+```{r}
+
+# Hierarchical clustering (complete linkage)
+hc_complete <- hclust(euc_distance, method = "complete" )
+
+# Use `ggdendrogram()` to make dendrogram with ggplot functionality
+
+ggdendrogram(hc_complete, 
+             rotate = TRUE) +
+  theme_minimal() +
+  labs(x = "Site Code", y = "Distance")
+
+# could customize like https://towardsdatascience.com/custom-coloring-dendrogram-ends-in-r-f1fa45e5077a
+
+```
+
+We can see how sites are clustered according to their stream chemistry, and could further investigate these linkages using spatial data.
+
+
+***
+
+*Data Source:*  
+Santa Barbara Coastal LTER and J. Melack. 2019. SBC LTER: Land: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000 ver 16. Environmental Data Initiative. https://doi.org/10.6073/pasta/67a558a24ceed9a0a5bf5e46ab841174. 
