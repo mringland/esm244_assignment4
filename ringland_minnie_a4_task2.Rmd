@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 library(tidyverse) # for everything
 library(patchwork) # for organizing plots
 library(gt) # for tables
+library(broom) # for tidy model output
 
 ```
 
@@ -117,7 +118,7 @@ catch_nls <- nls(Wild ~ K/(1 + A*exp(-r*year_new)),
 #summary(catch_nls)
 
 # Use broom:: functions to get model outputs in tidier format: 
-model_out <- broom::tidy(catch_nls) # Use View(model_out) to see the tidy model output.
+model_out <- broom::tidy(catch_nls)
 
 model_out %>% 
   gt() %>% 

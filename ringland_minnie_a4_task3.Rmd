@@ -1,5 +1,5 @@
 ---
-title: "Bootstrapping"
+title: "Bootstrapping for Campus Climate Findings"
 subtitle: "ESM 244 - Assignment 4 Task 3"
 author: "Minnie Ringland"
 date: "March 8, 2021"
@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
 library(tidyverse) # for everything
 library(patchwork) # for organizing plots
-library(gt) # for tables
+library(boot) # for bootstrapping
 
 ```
 
@@ -23,143 +23,83 @@ library(gt) # for tables
 
 #### About the Data
 
-Today, we'll explore trends in wild fish catch and aquaculture production around the world over the last 60-70 years. The Earth Policy Institute compiled data collected by the United Nations Food and Agriculture Organization, Fisheries Division. Fish data include fishes, crustaceans, mollusks, and various other aquatic animals. We use the total global catch, from all countries, from 1950-2012, divided according to whether the fish were wild or farmed.
+Today, we'll work with data collected in 2014 about the campus climate experience for individuals of different gender identities on UC sites.
+
+In 2014, the University of California (UC) contracted with Rankin & Associates, Consulting (R&A) to conduct a system-wide “Campus Climate” survey. The purpose of the survey was to gather a wide variety of data related to institutional climate, inclusion, and work-life issues so that the University is better informed about the living and working environments for students, faculty, staff, post-doctoral scholars at the ten UC campuses as well as the Office of the President, the Lawrence Berkeley National Laboratory, and the Division of Agriculture and Natural Resources.  Based on the findings, each UC campus and the three locations will develop action plans and strategic initiatives to improve the overall campus climate.
+
+A concerning finding was that 61% of individuals who identify as nonbinary/genderqueer responded that they had personally experienced “exclusionary, offensive, hostile or intimidating conduct.” Since the sample surveyed was so small, we can use bootstrapping, or resampling with replacement, to improve our ability to draw conclusions about the proportion of individuals on campus who experience discriminatory behavior.
 
 <br>  
 
-#### Preliminary Data Exploration
+#### Create sample data
 
 ```{r}
-# Read in data
-global_catch <- read_csv("fish_catch.csv") %>% 
-  rename("Year"=1, "Wild"=2, "Farmed"=3, "Total"=4) %>% 
-  slice(5:67) %>% 
-  mutate(Wild = as.numeric(Wild), Farmed = as.numeric(Farmed), Total=as.numeric(Total))
+# Create sample
+experience_yes <- rep(1, times = 22)
+experience_no <- rep(0, times = 14)
+climate_bad <- c(experience_yes, experience_no)
+sample <- data.frame("Participant"=1:36, "negative"=climate_bad)
 
-global_catch_long <- global_catch %>% 
-  pivot_longer(cols = Wild:Total, names_to = "Catch")
-
-p1 <- ggplot(data=global_catch_long) +
-  geom_point(aes(x=Year, y=value, color = Catch)) +
-  scale_x_discrete(breaks=seq(1950, 2020, by = 10)) +
-  scale_color_brewer(palette = 10) +
-  labs(y = "Catch (million tons)", color = "Catch Type") +
-  theme_light()
-
-p2 <- ggplot(data=global_catch_long) +
-  geom_point(aes(x=Year, y=log(value), color = Catch)) +
-  scale_x_discrete(breaks=seq(1950, 2020, by = 10)) +
-  scale_color_brewer(palette = 10) +
-  labs(y = "Natural Log of Catch", color = "Catch Type") +
-  theme_light()
-
-(p1 + p2) & theme_light()
 ```
-
-We see that for farmed fish, there is exponential growth in the catch over time. The wild catch looks more linear but then plateaus. When we plot the natural log of catch, we see a logistic growth-type curve for the wild catch. The logistic growth equation is:
-
-$P(t)=\frac{K}{1+Ae^{-kt}}$, where
-
-- $K$ is the carrying capacity
-- $A$ is $\frac{K-P_0}{P_0}$
-- $k$ is the growth rate constant
-
 
 <br>  
 
-#### Find initial estimates for *K*, *A* and *k*
-
-Let's estimate the growth constant during the curve's exponential phase (to get a starting-point guess for *k*): 
+#### Create bootstrap samples
 
 ```{r}
-# Reset years
-catch_years <- global_catch %>% 
-  select(Year, Wild) %>%
-  mutate(Year = as.numeric(Year)) %>%  
-  mutate(year_new = Year - min(Year))
+# Create a function that will calculate the proportion of each bootstrapped sample
+prop_fun <- function (x,i) {sum(x[i])/length(x[i])}
 
-# Select only exponential growth phase and log-transform
-catch_exp <- catch_years %>% 
-  filter(year_new < 40) %>% 
-  mutate(ln_catch = log(Wild))
+# Get just the vector of conduct
+conduct_vec <- sample$negative
 
-catch_exp2 <- catch_years %>% 
-  filter(year_new <= 40 & year_new >= 20) %>% 
-  mutate(ln_catch = log(Wild))
-  
-# Model linear to get *k* estimate (the slope of this linear equation is an estimate of the growth rate constant):
-lm_k <- lm(ln_catch ~ year_new, data = catch_exp)
-#lm_k2 <- lm(ln_catch ~ year_new, data = catch_exp2)
-# This gives the same parameter estimates as the full 40 year span estimate
+set.seed(432)
+# Create 10K bootstrap samples with replacement
+propboot_10k <- boot(conduct_vec, 
+                    statistic = prop_fun,
+                    R = 10000)
 
-K_est <- exp(4.5)
-A_est <- (K_est - catch_years$Wild[1])/(catch_years$Wild[1])
-# 
+# Also create 100000 bootstrap samples
+propboot_100k <- boot(conduct_vec, 
+                 statistic = prop_fun, 
+                 R = 100000)
+
 ```
-
-Looking at just 1950-1990, the growth rate constant is estimated by a linear model to be `r lm_k$coefficients[2]`.
-
-From the graphs, we can use an estimate of carrying capacity *K* ~90 million tons and *A*  ~1990, or year 40. These estimates will serve as the starting points for our iterative algorithm trying to converge on the parameters. 
 
 <br>  
 
-#### Estimate parameters using onlinear least squares (NLS)
-
-We'll use the most common algorithm - Gauss-Newton - to converge on parameter estimates that minimize the the sum of squares of residuals. 
+#### Plot histogram
 
 ```{r}
-catch_nls <- nls(Wild ~ K/(1 + A*exp(-r*year_new)),
-              data = catch_years,
-              start = list(K = K_est, A = A_est, r = lm_k$coefficients[2]),
-)
 
-# See the model summary (null hypothesis: parameter value = 0)
-#summary(catch_nls)
+df_10k <-data.frame(proportion = propboot_10k$t)
+df_100k <- data.frame(proportion = propboot_100k$t)
 
-# Use broom:: functions to get model outputs in tidier format: 
-model_out <- broom::tidy(catch_nls) # Use View(model_out) to see the tidy model output.
+# Histogram of 10K sample:
+p1 <- ggplot(data = df_10k, aes(x = proportion)) +
+  geom_histogram()
 
-model_out %>% 
-  gt() %>% 
-  tab_header(title = "Gauss-Newton NLS Parameter Estimates") %>% 
-  cols_label(
-    estimate = "Estimate",
-    std.error = "Standard Error",
-    statistic = "Statistic",
-    p.value = "P-Value"
-  )
+# Histogram of 100K sample:
+p2 <- ggplot(data = df_100k, aes(x = proportion)) +
+  geom_histogram()
+
+(p1 / p2) & theme_light()
 
 ```
-
-
-
-
-Our model with the estimated parameters is:
-$$P(t) = \frac{100.3}{1+4.316e^{-0.7t}}$$
 
 <br>  
 
-
-#### Visualize prediction
+#### Calculate confidence intervals with `boot.ci()` 
 ```{r}
-# Make predictions for the population at all of those times (time) in the original df: 
-catch_predict <- predict(catch_nls)
+boot.ci(propboot_10k, conf = 0.95)
+boot.ci(propboot_100k, conf = 0.95)
 
-# Bind predictions to original data frame:
-catch_complete <- data.frame(catch_years, catch_predict)
-
-# Plot them all together:
-ggplot(data = catch_complete, aes(x = Year, y = Wild)) +
-  geom_point(color="turquoise4", size=3) +
-  geom_line(aes(x = Year, y = catch_predict), size=1.2, linetype="dotdash") +
-  scale_x_continuous(breaks=seq(1950, 2020, by = 10)) +
-  scale_y_continuous(breaks=seq(0, 120, by = 10)) +
-  labs(y = "Catch (million tons)", title = "Global Wild Catch from 1950-2012", subtitle="Actual and Predicted using NLS") +
-  theme_light()
 ```
 
+For a 95% confidence interval, we can expect that 95 of 100 samples will have a proportion of individuals experiencing negative conduct between 0.45 and 0.77. Note that this assumes our original sample is representative of the entire UC population.
 
 ***
 
 *Data Source:*  
-Global wild fish catch and aquaculture production, compiled by Earth Policy Institute with 1950-2010 from U.N. Food and Agriculture Organization (FAO), Global Capture Production and Global Aquaculture Production, electronic databases, at www.fao.org/fishery/topic/16140/en.
+014 UCSB Campus Climate Project Final Report (prepared by Rankin & Associates Consulting, available at http://campusclimate.ucop.edu/_common/files/pdf-climate/ucsb-full-report.pdf
+
