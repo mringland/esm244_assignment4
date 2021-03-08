@@ -8,9 +8,8 @@ output:
     theme: paper
     code_folding: hide
     highlight: zenburn
-    toc: true
-    toc_float: true
 ---
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
@@ -26,7 +25,9 @@ library(ggdendro)
 
 ```
 
-## About the Data
+***  
+
+#### About the Data
 
 Today, we'll be using stream water chemistry data collected by Professor John Melack's team with the SBC LTER. Stream water samples have been collected throughout Santa Barbara area watersheds, and throughout each year since 2000. Measurements include dissolved nitrogen (nitrate, ammonium, total dissolved nitrogen); soluble reactive phosphorus (SRP); particulate organic carbon, nitrogen and phosphorus; total suspended sediments; and conductivity.
 
@@ -87,7 +88,7 @@ ggdendrogram(hc_complete,
 
 ```
 
-We can see how sites are clustered according to their stream chemistry, and could further investigate these linkages using spatial data.
+We can see how sites are clustered according to their stream chemistry, and could further investigate these linkages using spatial data to see if clustered sites are similar in geography or neighboring land use type.
 
 
 ***
